@@ -10,7 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 3259475789495959464}
   - component: {fileID: 546202164218778660}
-  - component: {fileID: 7270190795500911569}
   - component: {fileID: 8066603426999366566}
   - component: {fileID: 3513613942319242063}
   m_Layer: 6
@@ -48,24 +47,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f3e39c2b6fdea064585545a8bcd7cf2f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  actions: []
-  speed: 10
-  target: {fileID: 0}
-  distanceTraveled: 0
-  targetsReached: 0
---- !u!114 &7270190795500911569
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1075620252010625400}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1841c9feaa72c664f8cfe575df582b54, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  scale: 1
+  mass: 1500
+  dragCoefficient: 3
+  rollingResistanceCoefficient: 0.02
+  frontalArea: 2.5
+  wheelBase: 2.5
+  maxSteeringAngle: 30
+  maxAcceleration: 30
+  maxBrakeForce: 10
+  MaxTargets: 5
 --- !u!50 &8066603426999366566
 Rigidbody2D:
   serializedVersion: 4
