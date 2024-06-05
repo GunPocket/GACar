@@ -3,130 +3,336 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class NeuralNetwork {
-    public int[] Layers;
-    public float[][] Neurons;
-    public float[][][] Weights;
-    public float[][] LayerActivations;
+    public List<NeuralLayer> Layers { get; private set; }
+    public List<float[][]> Weights { get; private set; }
+    public List<float[]> Biases { get; private set; }
 
-    public NeuralNetwork(int[] layers) {
-        this.Layers = layers;
+    public ActivationFunctionType ActivationFunctionType { get; private set; }
+    public RegularizationType RegularizationType { get; private set; }
+    public OptimizationAlgorithm OptimizationAlgorithm { get; private set; }
+
+    public float RegularizationRate { get; private set; }
+    public float LearningRate { get; private set; }
+    public float DropoutRate { get; private set; }
+    public int Epochs { get; private set; }
+
+    public List<Synapse> Synapses { get; private set; }
+    private int synapseId = 0;
+
+    public NeuralNetwork(List<NeuralLayer> layers, ActivationFunctionType activationFunctionType,
+                         RegularizationType regularizationType = RegularizationType.None,
+                         float regularizationRate = 0.01f,
+                         OptimizationAlgorithm optimizationAlgorithm = OptimizationAlgorithm.SGD,
+                         float learningRate = 0.01f,
+                         int epochs = 100,
+                         float dropoutRate = 0.1f) {
+
+        Layers = layers;
+        ActivationFunctionType = activationFunctionType;
+        RegularizationType = regularizationType;
+        RegularizationRate = regularizationRate;
+        OptimizationAlgorithm = optimizationAlgorithm;
+        LearningRate = learningRate;
+        Epochs = epochs;
+        DropoutRate = dropoutRate;
+
+        Synapses = new List<Synapse>();
+        InitializeWeightsAndBiases();
         InitializeNeurons();
-        InitializeWeights();
-        InitializeLayerActivations();
+        InitializeSynapses();
+    }
+
+    private void InitializeWeightsAndBiases() {
+        Weights = new List<float[][]>();
+        Biases = new List<float[]>();
+
+        for (int i = 1; i < Layers.Count; i++) {
+            int previousLayerSize = Layers[i - 1].NeuronCount;
+            int currentLayerSize = Layers[i].NeuronCount;
+
+            float[][] layerWeights = new float[currentLayerSize][];
+            for (int j = 0; j < currentLayerSize; j++) {
+                layerWeights[j] = new float[previousLayerSize];
+                for (int k = 0; k < previousLayerSize; k++) {
+                    layerWeights[j][k] = UnityEngine.Random.Range(-1f, 1f);
+                }
+            }
+            Weights.Add(layerWeights);
+
+            float[] layerBiases = new float[currentLayerSize];
+            for (int j = 0; j < currentLayerSize; j++) {
+                layerBiases[j] = UnityEngine.Random.Range(-1f, 1f);
+            }
+            Biases.Add(layerBiases);
+        }
     }
 
     private void InitializeNeurons() {
-        List<float[]> neuronsList = new List<float[]>();
+        for (int layerIndex = 0; layerIndex < Layers.Count; layerIndex++) {
+            int layerSize = Layers[layerIndex].NeuronCount;
+            List<Neuron> layerNeurons = new();
 
-        for (int i = 0; i < Layers.Length; i++) {
-            neuronsList.Add(new float[Layers[i]]);
+            for (int neuronIndex = 0; neuronIndex < layerSize; neuronIndex++) {
+                Neuron neuron = new(neuronIndex, ActivationFunctionType);
+                layerNeurons.Add(neuron);
+            }
+
+            Layers[layerIndex].Neurons = layerNeurons;
         }
-
-        Neurons = neuronsList.ToArray();
     }
 
-    private void InitializeWeights() {
-        List<float[][]> weightsList = new List<float[][]>();
+    private void InitializeSynapses() {
+        synapseId = 0;
+        for (int i = 0; i < Layers.Count - 1; i++) {
+            int currentLayerSize = Layers[i].NeuronCount;
+            int nextLayerSize = Layers[i + 1].NeuronCount;
 
-        for (int i = 1; i < Layers.Length; i++) {
-            List<float[]> layerWeightsList = new List<float[]>();
+            for (int j = 0; j < currentLayerSize; j++) {
+                for (int k = 0; k < nextLayerSize; k++) {
+                    Synapse synapse = new(synapseId++, Layers[i].Neurons[j], Layers[i + 1].Neurons[k], UnityEngine.Random.Range(-1f, 1f));
+                    Synapses.Add(synapse);
+                    Layers[i].Neurons[j].OutgoingSynapses.Add(synapse);
+                    Layers[i + 1].Neurons[k].IncomingSynapses.Add(synapse);
+                }
+            }
+        }
+    }
 
-            int neuronsInPreviousLayer = Layers[i - 1];
+    public float[] Train(float[] input) {
+        for (int epoch = 0; epoch < Epochs; epoch++) {
+            float[] output = FeedForward(input);
+            Backpropagate(input, output);
+        }
+        return FeedForward(input);
+    }
 
-            for (int j = 0; j < Layers[i]; j++) {
-                float[] neuronWeights = new float[neuronsInPreviousLayer];
+    public float[] TrainGPU(float[] input) {
+        return null;
+    }
 
-                for (int k = 0; k < neuronsInPreviousLayer; k++) {
-                    neuronWeights[k] = UnityEngine.Random.Range(-1f, 1f);
+    private float[] FeedForward(float[] input) {
+        float[] currentActivation = input;
+
+        for (int layerIndex = 0; layerIndex < Layers.Count - 1; layerIndex++) {
+            int nextLayerSize = Layers[layerIndex + 1].NeuronCount;
+            float[] nextActivation = new float[nextLayerSize];
+
+            for (int nextNeuronIndex = 0; nextNeuronIndex < nextLayerSize; nextNeuronIndex++) {
+                float weightedSum = 0;
+
+                for (int currentNeuronIndex = 0; currentNeuronIndex < currentActivation.Length; currentNeuronIndex++) {
+                    Neuron currentNeuron = Layers[layerIndex].Neurons[currentNeuronIndex];
+                    Synapse synapse = currentNeuron.OutgoingSynapses[nextNeuronIndex];
+                    weightedSum += currentNeuron.Activate(currentActivation[currentNeuronIndex]) * synapse.Weight;
                 }
 
-                layerWeightsList.Add(neuronWeights);
+                weightedSum += Biases[layerIndex][nextNeuronIndex];
+                nextActivation[nextNeuronIndex] = Activate(weightedSum, ActivationFunctionType);
             }
 
-            weightsList.Add(layerWeightsList.ToArray());
+            currentActivation = nextActivation;
         }
 
-        Weights = weightsList.ToArray();
+        return currentActivation;
     }
 
-    private void InitializeLayerActivations() {
-        List<float[]> activationsList = new List<float[]>();
-
-        for (int i = 0; i < Layers.Length; i++) {
-            activationsList.Add(new float[Layers[i]]);
+    private void Backpropagate(float[] input, float[] output) {
+        float[][] delta = new float[Layers.Count][];
+        for (int i = 0; i < Layers.Count; i++) {
+            delta[i] = new float[Layers[i].NeuronCount];
         }
 
-        LayerActivations = activationsList.ToArray();
-    }
-
-    public float[] FeedForward(float[] inputs) {
-        for (int i = 0; i < inputs.Length; i++) {
-            Neurons[0][i] = inputs[i];
+        for (int i = 0; i < output.Length; i++) {
+            float error = output[i] - input[i];
+            delta[Layers.Count - 1][i] = error * Derivative(output[i]);
         }
 
-        for (int i = 1; i < Layers.Length; i++) {
-            for (int j = 0; j < Neurons[i].Length; j++) {
-                float value = 0f;
-
-                for (int k = 0; k < Neurons[i - 1].Length; k++) {
-                    value += Weights[i - 1][j][k] * Neurons[i - 1][k];
+        for (int layerIndex = Layers.Count - 2; layerIndex >= 0; layerIndex--) {
+            for (int i = 0; i < Layers[layerIndex].NeuronCount; i++) {
+                float error = 0;
+                for (int j = 0; j < Layers[layerIndex + 1].NeuronCount; j++) {
+                    error += delta[layerIndex + 1][j] * Layers[layerIndex].Neurons[i].OutgoingSynapses[j].Weight;
                 }
-
-                Neurons[i][j] = (float)Math.Tanh(value);
-                LayerActivations[i][j] = Neurons[i][j]; // Definindo a ativação da camada
+                delta[layerIndex][i] = error * Derivative(Layers[layerIndex].Neurons[i].Activate(0));
             }
         }
 
-        return Neurons[Neurons.Length - 1];
-    }
-
-    public void CopyWeightsFrom(NeuralNetwork sourceNetwork) {
-        if (sourceNetwork.Layers.Length != Layers.Length) {
-            Debug.LogError("As redes neurais têm diferentes números de camadas.");
-            return;
-        }
-
-        for (int i = 0; i < Layers.Length; i++) {
-            if (sourceNetwork.Layers[i] != Layers[i]) {
-                Debug.LogError("As redes neurais têm diferentes números de neurônios em uma ou mais camadas.");
-                return;
-            }
-
-            for (int j = 0; j < Weights[i].Length; j++) {
-                Array.Copy(sourceNetwork.Weights[i][j], Weights[i][j], sourceNetwork.Weights[i][j].Length);
+        for (int layerIndex = 0; layerIndex < Layers.Count - 1; layerIndex++) {
+            for (int i = 0; i < Layers[layerIndex + 1].NeuronCount; i++) {
+                for (int j = 0; j < Layers[layerIndex].NeuronCount; j++) {
+                    Synapse synapse = Layers[layerIndex].Neurons[j].OutgoingSynapses[i];
+                    float weightChange = -LearningRate * delta[layerIndex + 1][i] * Layers[layerIndex].Neurons[j].Activate(0);
+                    synapse.Weight += weightChange;
+                }
+                Biases[layerIndex][i] += -LearningRate * delta[layerIndex + 1][i];
             }
         }
     }
+
+    private float Activate(float value, ActivationFunctionType activationFunction) {
+        return activationFunction switch {
+            ActivationFunctionType.Sigmoid => Sigmoid(value),
+            ActivationFunctionType.ReLU => ReLU(value),
+            ActivationFunctionType.Tanh => Tanh(value),
+            _ => throw new ArgumentOutOfRangeException(),
+        };
+    }
+
+    private float Derivative(float value) {
+        return ActivationFunctionType switch {
+            ActivationFunctionType.Sigmoid => value * (1 - value),
+            ActivationFunctionType.ReLU => value > 0 ? 1 : 0,
+            ActivationFunctionType.Tanh => 1 - value * value,
+            _ => throw new ArgumentOutOfRangeException(),
+        };
+    }
+
+    private float Sigmoid(float x) {
+        return 1f / (1f + Mathf.Exp(-x));
+    }
+
+    private float ReLU(float x) {
+        return Mathf.Max(0, x);
+    }
+
+    private float Tanh(float x) {
+        return (Mathf.Exp(x) - Mathf.Exp(-x)) / (Mathf.Exp(x) + Mathf.Exp(-x));
+    }
+
+    public NeuralNetwork Crossover(NeuralNetwork otherNetwork) {
+        List<NeuralLayer> childLayers = new();
+
+        for (int i = 0; i < Layers.Count; i++) {
+            NeuralLayer childLayer;
+            if (i % 2 == 0) {
+                childLayer = Layers[i].Crossover(otherNetwork.Layers[i]);
+            } else {
+                childLayer = otherNetwork.Layers[i].Crossover(Layers[i]);
+            }
+            childLayers.Add(childLayer);
+        }
+
+        NeuralNetwork childNetwork = new(
+            childLayers,
+            ActivationFunctionType,
+            RegularizationType,
+            RegularizationRate,
+            OptimizationAlgorithm,
+            LearningRate,
+            Epochs,
+            DropoutRate
+        );
+
+        return childNetwork;
+    }
+
 
     public void Mutate(float mutationRate) {
-        for (int i = 0; i < Weights.Length; i++) {
-            for (int j = 0; j < Weights[i].Length; j++) {
-                for (int k = 0; k < Weights[i][j].Length; k++) {
-                    if (UnityEngine.Random.Range(0f, 1f) <= mutationRate) {
-                        Weights[i][j][k] = UnityEngine.Random.Range(-1f, 1f);
-                    }
-                }
-            }
+        if (UnityEngine.Random.Range(0f, 1f) < mutationRate) {
+            int chooseMutation = UnityEngine.Random.Range(0, 6);
+            ApplyMutation(chooseMutation);
+        }
+    }
+
+    private void ApplyMutation(int mutationType) {
+        switch (mutationType) {
+            case 0:
+                AddConnection();
+                break;
+            case 1:
+                ChangeConnectionWeight();
+                break;
+            case 2:
+                DisableConnection();
+                break;
+            case 3:
+                EvolveToAddNeuron();
+                break;
+            case 4:
+                ChangeActivationFunction();
+                break;
+            case 5:
+                RemoveDisconnectedElements();
+                break;
+        }
+    }
+
+    private void AddConnection() {
+        int layerIndex = UnityEngine.Random.Range(0, Layers.Count - 1);
+        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
+        int targetNeuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex + 1].Neurons.Count);
+
+        float weight = UnityEngine.Random.Range(-1f, 1f);
+        Layers[layerIndex].Neurons[neuronIndex].AddOutgoingSynapse(Layers[layerIndex + 1].Neurons[targetNeuronIndex], weight);
+    }
+
+    private void ChangeConnectionWeight() {
+        int layerIndex = UnityEngine.Random.Range(0, Layers.Count - 1);
+        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
+        int synapseIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses.Count);
+
+        Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses[synapseIndex].Weight += UnityEngine.Random.Range(-0.5f, 0.5f);
+    }
+
+    private void DisableConnection() {
+        int layerIndex = UnityEngine.Random.Range(0, Layers.Count - 1);
+        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
+        int synapseIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses.Count);
+
+        Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses[synapseIndex].Weight = 0f;
+    }
+
+    private void EvolveToAddNeuron() {
+        int layerIndex = UnityEngine.Random.Range(1, Layers.Count - 1);
+        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
+
+        Neuron newNeuron = new(neuronIndex, ActivationFunctionType);
+        foreach (Neuron previousNeuron in Layers[layerIndex - 1].Neurons) {
+            float weight = UnityEngine.Random.Range(-1f, 1f);
+            newNeuron.AddIncomingSynapse(previousNeuron, weight);
         }
 
-        for (int i = 1; i < Layers.Length - 1; i++) {
-            if (UnityEngine.Random.Range(0f, 1f) <= mutationRate) {
-                if (UnityEngine.Random.Range(0f, 1f) <= 0.5f && Layers[i] > 1) {
-                    Array.Resize(ref Weights[i - 1], Weights[i - 1].Length - 1);
-                    Layers[i]--;
-                } else {
-                    int previousLayerSize = Layers[i - 1];
-                    float[] neuronWeights = new float[previousLayerSize];
+        Layers[layerIndex].AddNeuron(newNeuron);
+    }
 
-                    for (int j = 0; j < previousLayerSize; j++) {
-                        neuronWeights[j] = UnityEngine.Random.Range(-1f, 1f);
+    private void ChangeActivationFunction() {
+        int layerIndex = UnityEngine.Random.Range(1, Layers.Count - 1);
+        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
+
+        ActivationFunctionType newActivationFunction = (ActivationFunctionType)UnityEngine.Random.Range(0, Enum.GetValues(typeof(ActivationFunctionType)).Length);
+        Layers[layerIndex].Neurons[neuronIndex].ActivationFunction = newActivationFunction;
+    }
+
+    private void RemoveDisconnectedElements() {
+        for (int layerIndex = 1; layerIndex < Layers.Count; layerIndex++) {
+            List<Neuron> connectedNeurons = new();
+
+            foreach (Neuron neuron in Layers[layerIndex].Neurons) {
+                bool isConnected = false;
+                foreach (Synapse synapse in neuron.IncomingSynapses) {
+                    if (Layers[layerIndex - 1].Neurons.Contains(synapse.InputNeuron)) {
+                        isConnected = true;
+                        break;
                     }
-
-                    Array.Resize(ref Weights[i - 1], Weights[i - 1].Length + 1);
-                    Weights[i - 1][Weights[i - 1].Length - 1] = neuronWeights;
-                    Layers[i]++;
+                }
+                if (isConnected) {
+                    connectedNeurons.Add(neuron);
                 }
             }
+
+            Layers[layerIndex].Neurons = connectedNeurons;
         }
+    }
+
+    public void AddLayer(NeuralLayer layer) {
+        Layers.Add(layer);
+    }
+
+    public static NeuralNetwork FromJson(string json) {
+        return JsonUtility.FromJson<NeuralNetwork>(json);
+    }
+
+    public string ToJson() {
+        return JsonUtility.ToJson(this);
     }
 }

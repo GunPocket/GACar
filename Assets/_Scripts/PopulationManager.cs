@@ -1,51 +1,51 @@
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
 using TMPro;
-using System.IO;
+using UnityEngine;
 
 public class PopulationManager : MonoBehaviour {
     [Header("Prefabs")]
     [SerializeField] private GameObject carPrefab;
     [SerializeField] private GameObject targetPrefab;
 
-    [Header("Características da população")]
+    [Header("Population Characteristics")]
     [SerializeField] private int populationSize = 100;
     [SerializeField][Range(0f, 1f)] private float mutationRate = 0.01f;
     [SerializeField] private float targetSpawnRadius = 20f;
     [SerializeField] private int maxTargets = 5;
     [SerializeField] private float simulationTime = 30f;
 
-    [Header("DNA Predefinido")]
+    [Header("Predefined DNA")]
     [TextArea(1, 5)][SerializeField] private string predefinedDNAString;
     private DNA predefinedDNA;
 
-    [Header("Características da Rede Neural")]
+    [Header("Neural Network Characteristics")]
     [SerializeField] private int inputLayerSize = 14;
     [SerializeField] private int outputLayerSize = 3;
+    [SerializeField] private ActivationFunctionType activationFunctionType = ActivationFunctionType.ReLU;
+    [SerializeField] private RegularizationType regularizationType = RegularizationType.L2;
+    [SerializeField] private OptimizationAlgorithm optimizationAlgorithm = OptimizationAlgorithm.Adam;
 
-    [Header("Textos da UI")]
+    [Header("UI Texts")]
     [SerializeField] private TMP_Text GenerationText;
     [SerializeField] private TMP_Text ElapsedTime;
     [SerializeField] private TMP_Text BestFitness;
 
-    [Header("Script de desenhará o cérebro")]
+    [Header("Brain Drawing Script")]
     [SerializeField] private BrainDrawer BrainDrawer;
 
-    private List<DNA> population = new List<DNA>();
-    private List<DNA> matingPool = new List<DNA>();
-    private List<GameObject> targets = new List<GameObject>();
-    private List<GameObject> cars = new List<GameObject>();
-    private List<float> fitnessHistory = new List<float>();
+    private List<DNA> population = new();
+    private readonly List<GameObject> targets = new();
+    private readonly List<GameObject> cars = new();
     private int generationCount = 0;
-    private bool isFinished = false;
+    private readonly bool isFinished = false;
     private float bestFitness = 0f;
     public DNA BestGenes;
 
     private void Start() {
         BestFitness.text = "0";
-        if (string.IsNullOrEmpty(predefinedDNAString)) {
-            predefinedDNA = DNA.FromString(predefinedDNAString);
+        if (!string.IsNullOrEmpty(predefinedDNAString)) {
+            predefinedDNA = DNA.FromJson(predefinedDNAString);
         }
         GenerateTargets();
         if (predefinedDNA == null) {
@@ -57,7 +57,6 @@ public class PopulationManager : MonoBehaviour {
         StartCoroutine(EvolvePopulation());
     }
 
-
     private void GenerateTargets() {
         targets.Clear();
         for (int i = 0; i < maxTargets; i++) {
@@ -66,8 +65,8 @@ public class PopulationManager : MonoBehaviour {
 
             while (!validPosition) {
                 randomPosition = new Vector3(
-                    Random.Range(-targetSpawnRadius, targetSpawnRadius),
-                    Random.Range(-targetSpawnRadius, targetSpawnRadius),
+                    UnityEngine.Random.Range(-targetSpawnRadius, targetSpawnRadius),
+                    UnityEngine.Random.Range(-targetSpawnRadius, targetSpawnRadius),
                     0);
 
                 if (Vector3.Distance(randomPosition, Vector3.zero) < 10f) continue;
@@ -86,15 +85,32 @@ public class PopulationManager : MonoBehaviour {
         }
     }
 
-
     private void SpawnInitialPopulation() {
         for (int i = 0; i < populationSize; i++) {
-            SpawnCar(new DNA(new int[] { inputLayerSize, outputLayerSize }));
+            List<NeuralLayer> layers = new() {
+            new NeuralLayer(inputLayerSize, activationFunctionType, regularizationType, optimizationAlgorithm),
+            new NeuralLayer(outputLayerSize, activationFunctionType, regularizationType, optimizationAlgorithm)
+        };
+
+            NeuralNetwork neuralNetwork = new(
+                layers,
+                activationFunctionType,
+                regularizationType,
+                0.01f,
+                optimizationAlgorithm,
+                0.01f,
+                100,
+                0.1f
+            );
+
+            DNA dna = new(neuralNetwork);
+
+            SpawnCar(dna);
         }
     }
 
     private void SpawnCar(DNA dna) {
-        if (population.Count != 100) population.Add(dna);
+        if (population.Count != populationSize) population.Add(dna);
         GameObject car = Instantiate(carPrefab, Vector3.zero, Quaternion.identity);
         car.GetComponent<CarController>().Brain = dna;
         car.GetComponent<CarController>().SetPopulationManager(this);
@@ -102,7 +118,7 @@ public class PopulationManager : MonoBehaviour {
     }
 
     public List<Vector3> GetTargetPositions() {
-        List<Vector3> targetPositions = new List<Vector3>();
+        List<Vector3> targetPositions = new();
         foreach (var target in targets) {
             targetPositions.Add(target.transform.position);
         }
@@ -116,38 +132,30 @@ public class PopulationManager : MonoBehaviour {
             CreateNewGeneration();
             generationCount++;
             UpdateGenerationText();
-
-            fitnessHistory.Add(bestFitness);
         }
     }
-
 
     private void EvaluatePopulation() {
         population.Sort((a, b) => b.Fitness.CompareTo(a.Fitness));
 
-        int matingPoolSize = Mathf.Max(1, Mathf.FloorToInt(populationSize * 0.1f));
-
-        int rangeCount = Mathf.Min(matingPoolSize, population.Count);
-
-        matingPool = new List<DNA>(population.GetRange(0, rangeCount));
-
         bestFitness = population[0].Fitness;
         BestGenes = population[0];
-        BrainDrawer.DrawBrain(BestGenes);
+
+        BrainDrawer.UpdateBrain(BestGenes);
     }
 
     private void CreateNewGeneration() {
         population.Sort((a, b) => b.Fitness.CompareTo(a.Fitness));
 
-        List<DNA> elite = new List<DNA>(population.GetRange(0, 10));
+        List<DNA> elite = new(population.GetRange(0, 10));
 
-        List<DNA> newPopulation = new List<DNA>();
+        List<DNA> newPopulation = new();
 
         newPopulation.AddRange(elite);
 
         for (int i = 0; i < populationSize - 10; i++) {
-            DNA parent1 = matingPool[Random.Range(0, matingPool.Count)];
-            DNA parent2 = matingPool[Random.Range(0, matingPool.Count)];
+            DNA parent1 = population[UnityEngine.Random.Range(0, population.Count)];
+            DNA parent2 = population[UnityEngine.Random.Range(0, population.Count)];
 
             DNA offspring = parent1.Crossover(parent2);
             offspring.Mutate(mutationRate);
@@ -159,7 +167,7 @@ public class PopulationManager : MonoBehaviour {
     }
 
     private void ResetScene() {
-        print($"Generation {generationCount} best fitness: {bestFitness.ToString("F2")}");
+        Debug.Log($"Generation {generationCount} best fitness: {bestFitness:F2}");
 
         DestroyTargets();
         GenerateTargets();
@@ -175,7 +183,7 @@ public class PopulationManager : MonoBehaviour {
     }
 
     private void DestroyCars() {
-        List<GameObject> carsCopy = new List<GameObject>(cars);
+        List<GameObject> carsCopy = new(cars);
 
         foreach (GameObject car in carsCopy) {
             Destroy(car);
@@ -191,37 +199,25 @@ public class PopulationManager : MonoBehaviour {
 
     private void UpdateGenerationText() {
         if (GenerationText != null) {
-            GenerationText.text = $"Geração atual: {generationCount.ToString()}";
-        }
-    }
-
-    private void SaveFitnessHistory() {
-        string fileName = "fitness_history.txt";
-        string filePath = Path.Combine(Application.persistentDataPath, fileName);
-
-        Debug.Log("Caminho do arquivo: " + filePath);
-
-        using (StreamWriter writer = new StreamWriter(filePath)) {
-            foreach (float fitness in fitnessHistory) {
-                writer.WriteLine(fitness.ToString());
-            }
+            GenerationText.text = $"Current Generation: {generationCount}";
         }
     }
 
     private void Update() {
         if (ElapsedTime != null) {
-            ElapsedTime.text = $"Tempo decorrido: {Mathf.RoundToInt(Time.timeSinceLevelLoad).ToString()}s";
+            ElapsedTime.text = $"Elapsed Time: {Mathf.RoundToInt(Time.timeSinceLevelLoad)}s";
         }
         if (BestFitness != null) {
-            BestFitness.text = $"Melhor Fitness: {bestFitness.ToString("F2")}";
+            BestFitness.text = $"Best Fitness: {bestFitness:F2}";
         }
     }
 
     private void OnApplicationQuit() {
-        SaveFitnessHistory();
         if (BestGenes != null) {
-            Debug.Log("Melhor DNA do carro:");
-            Debug.Log(BestGenes.ToReadableString(BestGenes.NeuralNetwork.Weights));
+            string json = BestGenes.ToJson(); // Converte o melhor gene em JSON
+            string filePath = Application.persistentDataPath + "/BestGene.json"; // Define o caminho do arquivo JSON
+            System.IO.File.WriteAllText(filePath, json); // Escreve o JSON no arquivo
+            Debug.Log("Melhor gene salvo em: " + filePath); // Mostra o caminho onde o JSON foi salvo
         }
     }
 
@@ -232,7 +228,6 @@ public class PopulationManager : MonoBehaviour {
 
         Gizmos.color = Color.green;
         Gizmos.DrawSphere(targets[1].transform.position, 0.5f);
-
         Gizmos.color = Color.blue;
         Gizmos.DrawSphere(targets[2].transform.position, 0.5f);
 
