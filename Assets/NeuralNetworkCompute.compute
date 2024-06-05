@@ -1,0 +1,55 @@
+#pragma kernel CSMain
+
+// Buffers
+RWStructuredBuffer<float> inputBuffer;
+RWStructuredBuffer<float> weightBuffer;
+RWStructuredBuffer<float> biasBuffer;
+RWStructuredBuffer<float> outputBuffer;
+
+int inputSize;
+int outputSize;
+
+[numthreads(1, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float result = 0.0f;
+
+    for (int i = 0; i < inputSize; i++)
+    {
+        float inputValue = inputBuffer[i];
+        
+        // Check for NaN or Infinity
+        if (isnan(inputValue) || isinf(inputValue))
+        {
+            inputValue = 0.0f; // Set to a default value
+        }
+        
+        result += inputValue * weightBuffer[id.x * inputSize + i];
+    }
+
+    float biasValue = biasBuffer[id.x];
+    
+    // Check for NaN or Infinity
+    if (isnan(biasValue) || isinf(biasValue))
+    {
+        biasValue = 0.0f; // Set to a default value
+    }
+    
+    result += biasValue;
+    
+    float tanhResult = tanh(result);
+    
+    // Check for NaN or Infinity
+    if (isnan(tanhResult) || isinf(tanhResult))
+    {
+        tanhResult = 0.0f; // Set to a default value
+    }
+    
+    outputBuffer[id.x] = tanhResult;
+}
+
+float tanh(float x)
+{
+    float exp2x = exp(2 * x);
+    return (exp2x - 1) / (exp2x + 1);
+}

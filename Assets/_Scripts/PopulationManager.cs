@@ -4,6 +4,9 @@ using TMPro;
 using UnityEngine;
 
 public class PopulationManager : MonoBehaviour {
+    [Header("Time Scale")]
+    public float TimeScale = 6.0f;
+
     [Header("Prefabs")]
     [SerializeField] private GameObject carPrefab;
     [SerializeField] private GameObject targetPrefab;
@@ -34,6 +37,9 @@ public class PopulationManager : MonoBehaviour {
     [Header("Brain Drawing Script")]
     [SerializeField] private BrainDrawer BrainDrawer;
 
+    [Header("Compute Shader")]
+    public ComputeShader NeuralNetworkCompute;
+
     private List<DNA> population = new();
     private readonly List<GameObject> targets = new();
     private readonly List<GameObject> cars = new();
@@ -43,16 +49,17 @@ public class PopulationManager : MonoBehaviour {
     public DNA BestGenes;
 
     private void Start() {
+        Time.timeScale = TimeScale;
         BestFitness.text = "0";
         if (!string.IsNullOrEmpty(predefinedDNAString)) {
             predefinedDNA = DNA.FromJson(predefinedDNAString);
         }
         GenerateTargets();
-        if (predefinedDNA == null) {
+        //if (predefinedDNA == null) {
             SpawnInitialPopulation();
-        } else {
-            SpawnCar(predefinedDNA);
-        }
+        //} else {
+        //    SpawnCar(predefinedDNA);
+        //}
         UpdateGenerationText();
         StartCoroutine(EvolvePopulation());
     }
@@ -110,10 +117,12 @@ public class PopulationManager : MonoBehaviour {
     }
 
     private void SpawnCar(DNA dna) {
-        if (population.Count != populationSize) population.Add(dna);
+        population.Add(dna);
         GameObject car = Instantiate(carPrefab, Vector3.zero, Quaternion.identity);
-        car.GetComponent<CarController>().Brain = dna;
-        car.GetComponent<CarController>().SetPopulationManager(this);
+        var carController = car.GetComponent<CarController>();
+        carController.SetBrain(dna);
+        carController.SetPopulationManager(this);
+        carController.SetShader(NeuralNetworkCompute);
         cars.Add(car);
     }
 
@@ -192,10 +201,13 @@ public class PopulationManager : MonoBehaviour {
     }
 
     private void GenerateCars() {
-        foreach (DNA dna in population) {
+        List<DNA> populationCopy = new List<DNA>(population); // Cria uma cópia da lista population
+
+        foreach (DNA dna in populationCopy) { // Itera sobre a cópia
             SpawnCar(dna);
         }
     }
+
 
     private void UpdateGenerationText() {
         if (GenerationText != null) {

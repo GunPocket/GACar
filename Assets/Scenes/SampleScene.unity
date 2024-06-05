@@ -359,13 +359,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1970cefb7fca34f48a287ec57dad5489, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  TimeScale: 1
   carPrefab: {fileID: 1075620252010625400, guid: 96a3dcd0359d50648ba590dca18a03e2, type: 3}
   targetPrefab: {fileID: 3182343489933841686, guid: a2ce4ba2dcbc36c448dbcc91b0e306bc, type: 3}
-  populationSize: 1
+  populationSize: 100
   mutationRate: 0.05
   targetSpawnRadius: 20
   maxTargets: 5
-  simulationTime: 5
+  simulationTime: 30
   predefinedDNAString: 
   inputLayerSize: 14
   outputLayerSize: 3
@@ -376,8 +377,7 @@ MonoBehaviour:
   ElapsedTime: {fileID: 1273294663}
   BestFitness: {fileID: 1450042757}
   BrainDrawer: {fileID: 1774182868}
-  feedforwardShader: {fileID: 7200000, guid: bbb3c0a703fa485499420b91e1cd7f0c, type: 3}
-  backpropagationShader: {fileID: 7200000, guid: 84db8c219f8362c43b3d1374ea3d03f5, type: 3}
+  NeuralNetworkCompute: {fileID: 7200000, guid: f58c4340cd4243f438251dbb88deb425, type: 3}
 --- !u!114 &1052228792
 MonoBehaviour:
   m_ObjectHideFlags: 0

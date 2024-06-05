@@ -28,8 +28,18 @@ public class CarController : MonoBehaviour {
         rb.angularDrag = 0.5f;
     }
 
+    public void SetBrain(DNA brain) {
+        // Inicialize o cérebro (Brain) aqui
+        Brain = brain;
+    }
+
+    public void SetShader(ComputeShader computeShader) {
+        Brain.NeuralNetwork.NeuralNetworkCompute = computeShader;
+    }
+
     private void FixedUpdate() {
         if (targetSequence == null || currentTargetIndex >= targetSequence.Count) return;
+
 
         Vector2 targetPosition = targetSequence[currentTargetIndex];
         float distanceToTarget = Vector2.Distance(transform.position, targetPosition);
@@ -48,8 +58,10 @@ public class CarController : MonoBehaviour {
 
         inputs = CombineInputs(inputs, rayDistances);
 
-        float[] outputs = Brain.NeuralNetwork.TrainGPU(inputs);
-        ApplyOutputs(outputs);
+        if (Brain != null && Brain.NeuralNetwork != null) {
+            float[] outputs = Brain.NeuralNetwork.TrainGPU(inputs);
+            ApplyOutputs(outputs);
+        }
     }
 
     private void UpdateRaycastDistances() {
@@ -78,7 +90,7 @@ public class CarController : MonoBehaviour {
         return combined;
     }
 
-    private void ApplyOutputs(float[] outputs) {
+    private void ApplyOutputs(float[] outputs) {    
         float acceleration = outputs[0];
         float brake = outputs[1];
         float steering = outputs[2];

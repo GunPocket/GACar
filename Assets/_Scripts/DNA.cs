@@ -4,7 +4,7 @@ using UnityEngine;
 
 [Serializable]
 public class DNA {
-    public NeuralNetwork NeuralNetwork { get; private set; }
+    public NeuralNetwork NeuralNetwork;
     public float Fitness { get; set; }
 
     public DNA(List<NeuralLayer> layers, ActivationFunctionType activationFunctionType, RegularizationType regularizationType, float regularizationLambda, OptimizationAlgorithm optimizationAlgorithm) {

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class NeuralNetwork {
+    public ComputeShader NeuralNetworkCompute;
+
     public List<NeuralLayer> Layers { get; private set; }
     public List<float[][]> Weights { get; private set; }
     public List<float[]> Biases { get; private set; }
@@ -19,6 +21,11 @@ public class NeuralNetwork {
     public List<Synapse> Synapses { get; private set; }
     private int synapseId = 0;
 
+    private ComputeBuffer inputBuffer;
+    private ComputeBuffer weightBuffer;
+    private ComputeBuffer biasBuffer;
+    private ComputeBuffer outputBuffer;
+
     public NeuralNetwork(List<NeuralLayer> layers, ActivationFunctionType activationFunctionType,
                          RegularizationType regularizationType = RegularizationType.None,
                          float regularizationRate = 0.01f,
@@ -26,7 +33,6 @@ public class NeuralNetwork {
                          float learningRate = 0.01f,
                          int epochs = 100,
                          float dropoutRate = 0.1f) {
-
         Layers = layers;
         ActivationFunctionType = activationFunctionType;
         RegularizationType = regularizationType;
@@ -98,16 +104,69 @@ public class NeuralNetwork {
         }
     }
 
+    public float[] TrainGPU(float[] input) {
+        for (int i = 0; i < input.Length; i++) {
+            if (float.IsNaN(input[i]) || float.IsInfinity(input[i])) {
+                // Handle NaN or Infinity (e.g., set to default value)
+                input[i] = 0.0f;
+            }
+        }
+
+        // Setup buffers
+        int inputSize = input.Length;
+        int outputSize = Layers[Layers.Count - 1].NeuronCount;
+
+        inputBuffer = new ComputeBuffer(inputSize, sizeof(float));
+        weightBuffer = new ComputeBuffer(inputSize * outputSize, sizeof(float));
+        biasBuffer = new ComputeBuffer(outputSize, sizeof(float));
+        outputBuffer = new ComputeBuffer(outputSize, sizeof(float));
+
+        // Set data to buffers
+        inputBuffer.SetData(input);
+        weightBuffer.SetData(FlattenWeights());
+        biasBuffer.SetData(Biases[Biases.Count - 1]);
+
+        // Set buffers and other parameters to the compute shader
+        int kernelHandle = NeuralNetworkCompute.FindKernel("CSMain");
+        NeuralNetworkCompute.SetBuffer(kernelHandle, "inputBuffer", inputBuffer);
+        NeuralNetworkCompute.SetBuffer(kernelHandle, "weightBuffer", weightBuffer);
+        NeuralNetworkCompute.SetBuffer(kernelHandle, "biasBuffer", biasBuffer);
+        NeuralNetworkCompute.SetBuffer(kernelHandle, "outputBuffer", outputBuffer);
+        NeuralNetworkCompute.SetInt("inputSize", inputSize);
+        NeuralNetworkCompute.SetInt("outputSize", outputSize);
+
+        // Execute the compute shader
+        NeuralNetworkCompute.Dispatch(kernelHandle, outputSize, 1, 1);
+
+        // Retrieve the results
+        float[] output = new float[outputSize];
+        outputBuffer.GetData(output);
+
+        // Clean up
+        inputBuffer.Release();
+        weightBuffer.Release();
+        biasBuffer.Release();
+        outputBuffer.Release();
+
+        return output;
+    }
+
+    private float[] FlattenWeights() {
+        List<float> flatWeights = new List<float>();
+        foreach (var layerWeights in Weights) {
+            foreach (var neuronWeights in layerWeights) {
+                flatWeights.AddRange(neuronWeights);
+            }
+        }
+        return flatWeights.ToArray();
+    }
+
     public float[] Train(float[] input) {
         for (int epoch = 0; epoch < Epochs; epoch++) {
             float[] output = FeedForward(input);
-            Backpropagate(input, output);
+            Backpropagate(input);
         }
         return FeedForward(input);
-    }
-
-    public float[] TrainGPU(float[] input) {
-        return null;
     }
 
     private float[] FeedForward(float[] input) {
@@ -136,17 +195,21 @@ public class NeuralNetwork {
         return currentActivation;
     }
 
-    private void Backpropagate(float[] input, float[] output) {
+    private void Backpropagate(float[] input) {
         float[][] delta = new float[Layers.Count][];
+
+        // Inicializando o delta para todas as camadas
         for (int i = 0; i < Layers.Count; i++) {
             delta[i] = new float[Layers[i].NeuronCount];
         }
 
-        for (int i = 0; i < output.Length; i++) {
-            float error = output[i] - input[i];
-            delta[Layers.Count - 1][i] = error * Derivative(output[i]);
+        // Calculando o erro da camada de saída
+        for (int i = 0; i < Layers[Layers.Count - 1].NeuronCount; i++) {
+            float error = 0; // Removendo a referência ao 'output'
+            delta[Layers.Count - 1][i] = error * Derivative(Layers[Layers.Count - 1].Neurons[i].Activate(0)); // Usando a ativação da última camada diretamente
         }
 
+        // Propagando o erro de volta pelas camadas ocultas
         for (int layerIndex = Layers.Count - 2; layerIndex >= 0; layerIndex--) {
             for (int i = 0; i < Layers[layerIndex].NeuronCount; i++) {
                 float error = 0;
@@ -157,6 +220,7 @@ public class NeuralNetwork {
             }
         }
 
+        // Atualizando os pesos e os vieses
         for (int layerIndex = 0; layerIndex < Layers.Count - 1; layerIndex++) {
             for (int i = 0; i < Layers[layerIndex + 1].NeuronCount; i++) {
                 for (int j = 0; j < Layers[layerIndex].NeuronCount; j++) {
@@ -168,6 +232,7 @@ public class NeuralNetwork {
             }
         }
     }
+
 
     private float Activate(float value, ActivationFunctionType activationFunction) {
         return activationFunction switch {
@@ -225,7 +290,6 @@ public class NeuralNetwork {
 
         return childNetwork;
     }
-
 
     public void Mutate(float mutationRate) {
         if (UnityEngine.Random.Range(0f, 1f) < mutationRate) {
