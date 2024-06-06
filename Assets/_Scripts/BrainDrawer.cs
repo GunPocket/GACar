@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,15 +10,16 @@ public class BrainDrawer : MonoBehaviour {
     [SerializeField] private Color connectionColor;
     [SerializeField] private RectTransform panelRect;
 
+    private readonly List<GameObject> neuronObjects = new();
+    private readonly List<GameObject> connectionObjects = new();
+
     public void UpdateBrain(DNA dna) {
         bestGenes = dna;
         DrawBrain();
     }
 
     private void DrawBrain() {
-        foreach (Transform child in transform) {
-            Destroy(child.gameObject);
-        }
+        ClearNeuronsAndConnections();
 
         if (bestGenes == null || bestGenes.NeuralNetwork == null) {
             Debug.LogWarning("No DNA or neural network defined to draw.");
@@ -28,6 +28,18 @@ public class BrainDrawer : MonoBehaviour {
 
         DrawConnections();
         DrawNeurons();
+    }
+
+    private void ClearNeuronsAndConnections() {
+        foreach (var neuronObject in neuronObjects) {
+            Destroy(neuronObject);
+        }
+        neuronObjects.Clear();
+
+        foreach (var connectionObject in connectionObjects) {
+            Destroy(connectionObject);
+        }
+        connectionObjects.Clear();
     }
 
     private void DrawNeurons() {
@@ -41,6 +53,8 @@ public class BrainDrawer : MonoBehaviour {
                 float yPos = (neuronIndex + 1) * yOffset;
 
                 GameObject neuron = Instantiate(neuronPrefab, panelRect);
+                neuronObjects.Add(neuron);
+
                 RectTransform rt = neuron.GetComponent<RectTransform>();
                 rt.sizeDelta = new Vector2(20f, 20f);
                 rt.anchorMin = new Vector2(0, 0);
@@ -54,20 +68,6 @@ public class BrainDrawer : MonoBehaviour {
                 //AddNeuronText(neuron, activation);
             }
         }
-    }
-
-    private void AddNeuronText(GameObject neuron, float activation) {
-        GameObject textObject = new("Text", typeof(RectTransform));
-        textObject.transform.SetParent(neuron.transform);
-        Text textComponent = textObject.AddComponent<Text>();
-        textComponent.text = activation.ToString("F2");
-        textComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        textComponent.fontSize = 10;
-        textComponent.color = Color.black;
-        textComponent.alignment = TextAnchor.MiddleCenter;
-        RectTransform rt = textObject.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(50f, 20f);
-        rt.anchoredPosition = Vector2.zero;
     }
 
     private Color GetNeuronColor(float activation) {
@@ -96,8 +96,9 @@ public class BrainDrawer : MonoBehaviour {
                     float yPos2 = ((currentNeuronIndex + 1) * (panelRect.rect.height / (currentLayerNeuronCount + 1)));
 
                     foreach (var synapse in bestGenes.NeuralNetwork.Layers[i].Neurons[currentNeuronIndex].IncomingSynapses) {
-                        if (synapse.InputNeuron == bestGenes.NeuralNetwork.Layers[i - 1].Neurons[previousNeuronIndex]) {
+                        if (synapse.InputNeuron.Index == bestGenes.NeuralNetwork.Layers[i - 1].Neurons[previousNeuronIndex].Index) {
                             GameObject connection = Instantiate(connectionPrefab, panelRect);
+                            connectionObjects.Add(connection);
 
                             RectTransform rt = connection.GetComponent<RectTransform>();
                             rt.sizeDelta = new Vector2(Vector2.Distance(new Vector2(xPos1, yPos1), new Vector2(xPos2, yPos2)), 2f);

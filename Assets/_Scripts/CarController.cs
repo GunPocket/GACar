@@ -20,26 +20,34 @@ public class CarController : MonoBehaviour {
     private readonly float rayLength = 5f;
     private readonly float longerRayLength = 10f;
 
-    public void SetPopulationManager(PopulationManager pm) {
-        targetSequence = pm.GetTargetPositions();
+    private readonly Vector2[] directions = {
+        Vector2.up,
+        (Vector2.up + Vector2.right).normalized,
+        Vector2.right,
+        (Vector2.down + Vector2.right).normalized,
+        Vector2.down,
+        (Vector2.down + Vector2.left).normalized,
+        Vector2.left,
+        (Vector2.up + Vector2.left).normalized
+    };
+
+    private void Start() {
         rb = GetComponent<Rigidbody2D>();
         rb.mass = mass / 1000;
         rb.drag = dragCoefficient;
         rb.angularDrag = 0.5f;
     }
 
-    public void SetBrain(DNA brain) {
-        // Inicialize o cérebro (Brain) aqui
-        Brain = brain;
+    public void SetPopulationManager(PopulationManager pm) {
+        targetSequence = pm.GetTargetPositions();
     }
 
-    public void SetShader(ComputeShader computeShader) {
-        Brain.NeuralNetwork.NeuralNetworkCompute = computeShader;
+    public void SetBrain(DNA brain) {
+        Brain = brain;
     }
 
     private void FixedUpdate() {
         if (targetSequence == null || currentTargetIndex >= targetSequence.Count) return;
-
 
         Vector2 targetPosition = targetSequence[currentTargetIndex];
         float distanceToTarget = Vector2.Distance(transform.position, targetPosition);
@@ -65,17 +73,6 @@ public class CarController : MonoBehaviour {
     }
 
     private void UpdateRaycastDistances() {
-        Vector2[] directions = {
-            Vector2.up,
-            (Vector2.up + Vector2.right).normalized,
-            Vector2.right,
-            (Vector2.down + Vector2.right).normalized,
-            Vector2.down,
-            (Vector2.down + Vector2.left).normalized,
-            Vector2.left,
-            (Vector2.up + Vector2.left).normalized
-        };
-
         for (int i = 0; i < directions.Length; i++) {
             float length = (i % 2 == 0) ? longerRayLength : rayLength;
             RaycastHit2D hit = Physics2D.Raycast(transform.position, directions[i], length);
@@ -90,7 +87,7 @@ public class CarController : MonoBehaviour {
         return combined;
     }
 
-    private void ApplyOutputs(float[] outputs) {    
+    private void ApplyOutputs(float[] outputs) {
         float acceleration = outputs[0];
         float brake = outputs[1];
         float steering = outputs[2];

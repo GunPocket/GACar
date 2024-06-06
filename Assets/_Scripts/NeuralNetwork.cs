@@ -1,6 +1,8 @@
-using System;
+using Unity.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using Unity.Jobs;
 
 public class NeuralNetwork {
     public ComputeShader NeuralNetworkCompute;
@@ -21,18 +23,15 @@ public class NeuralNetwork {
     public List<Synapse> Synapses { get; private set; }
     private int synapseId = 0;
 
-    private ComputeBuffer inputBuffer;
-    private ComputeBuffer weightBuffer;
-    private ComputeBuffer biasBuffer;
-    private ComputeBuffer outputBuffer;
+    private Unity.Mathematics.Random rand;
 
     public NeuralNetwork(List<NeuralLayer> layers, ActivationFunctionType activationFunctionType,
-                         RegularizationType regularizationType = RegularizationType.None,
-                         float regularizationRate = 0.01f,
-                         OptimizationAlgorithm optimizationAlgorithm = OptimizationAlgorithm.SGD,
-                         float learningRate = 0.01f,
-                         int epochs = 100,
-                         float dropoutRate = 0.1f) {
+                     RegularizationType regularizationType = RegularizationType.None,
+                     float regularizationRate = 0.01f,
+                     OptimizationAlgorithm optimizationAlgorithm = OptimizationAlgorithm.SGD,
+                     float learningRate = 0.01f,
+                     int epochs = 100,
+                     float dropoutRate = 0.1f) {
         Layers = layers;
         ActivationFunctionType = activationFunctionType;
         RegularizationType = regularizationType;
@@ -42,15 +41,20 @@ public class NeuralNetwork {
         Epochs = epochs;
         DropoutRate = dropoutRate;
 
+        rand = new Unity.Mathematics.Random((uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue));
+
         Synapses = new List<Synapse>();
+
         InitializeWeightsAndBiases();
-        InitializeNeurons();
+        InitializeNeurons(); 
         InitializeSynapses();
     }
 
     private void InitializeWeightsAndBiases() {
         Weights = new List<float[][]>();
         Biases = new List<float[]>();
+
+        System.Random rand = new();
 
         for (int i = 1; i < Layers.Count; i++) {
             int previousLayerSize = Layers[i - 1].NeuronCount;
@@ -60,14 +64,14 @@ public class NeuralNetwork {
             for (int j = 0; j < currentLayerSize; j++) {
                 layerWeights[j] = new float[previousLayerSize];
                 for (int k = 0; k < previousLayerSize; k++) {
-                    layerWeights[j][k] = UnityEngine.Random.Range(-1f, 1f);
+                    layerWeights[j][k] = (float)rand.NextDouble() * 2f - 1f;
                 }
             }
             Weights.Add(layerWeights);
 
             float[] layerBiases = new float[currentLayerSize];
             for (int j = 0; j < currentLayerSize; j++) {
-                layerBiases[j] = UnityEngine.Random.Range(-1f, 1f);
+                layerBiases[j] = (float)rand.NextDouble() * 2f - 1f;
             }
             Biases.Add(layerBiases);
         }
@@ -76,7 +80,7 @@ public class NeuralNetwork {
     private void InitializeNeurons() {
         for (int layerIndex = 0; layerIndex < Layers.Count; layerIndex++) {
             int layerSize = Layers[layerIndex].NeuronCount;
-            List<Neuron> layerNeurons = new();
+            List<Neuron> layerNeurons = new(layerSize);
 
             for (int neuronIndex = 0; neuronIndex < layerSize; neuronIndex++) {
                 Neuron neuron = new(neuronIndex, ActivationFunctionType);
@@ -95,7 +99,7 @@ public class NeuralNetwork {
 
             for (int j = 0; j < currentLayerSize; j++) {
                 for (int k = 0; k < nextLayerSize; k++) {
-                    Synapse synapse = new(synapseId++, Layers[i].Neurons[j], Layers[i + 1].Neurons[k], UnityEngine.Random.Range(-1f, 1f));
+                    Synapse synapse = new(synapseId++, Layers[i].Neurons[j], Layers[i + 1].Neurons[k], (float)rand.NextDouble() * 2f - 1f); // Usando o gerador de números aleatórios
                     Synapses.Add(synapse);
                     Layers[i].Neurons[j].OutgoingSynapses.Add(synapse);
                     Layers[i + 1].Neurons[k].IncomingSynapses.Add(synapse);
@@ -104,179 +108,82 @@ public class NeuralNetwork {
         }
     }
 
+
+
     public float[] TrainGPU(float[] input) {
+        // Handle NaN or Infinity values in the input
         for (int i = 0; i < input.Length; i++) {
             if (float.IsNaN(input[i]) || float.IsInfinity(input[i])) {
-                // Handle NaN or Infinity (e.g., set to default value)
-                input[i] = 0.0f;
+                input[i] = 0.0f; // Set to a default value
             }
         }
 
-        // Setup buffers
-        int inputSize = input.Length;
-        int outputSize = Layers[Layers.Count - 1].NeuronCount;
+        int outputSize = Layers[^1].NeuronCount;
 
-        inputBuffer = new ComputeBuffer(inputSize, sizeof(float));
-        weightBuffer = new ComputeBuffer(inputSize * outputSize, sizeof(float));
-        biasBuffer = new ComputeBuffer(outputSize, sizeof(float));
-        outputBuffer = new ComputeBuffer(outputSize, sizeof(float));
+        // Setup NativeArrays
+        NativeArray<float> inputNative = new(input, Allocator.TempJob);
+        NativeArray<float> weightsNative = new(FlattenWeights(), Allocator.TempJob);
+        NativeArray<float> biasesNative = new(Biases[^1], Allocator.TempJob);
+        NativeArray<float> outputNative = new(outputSize, Allocator.TempJob);
 
-        // Set data to buffers
-        inputBuffer.SetData(input);
-        weightBuffer.SetData(FlattenWeights());
-        biasBuffer.SetData(Biases[Biases.Count - 1]);
-
-        // Set buffers and other parameters to the compute shader
-        int kernelHandle = NeuralNetworkCompute.FindKernel("CSMain");
-        NeuralNetworkCompute.SetBuffer(kernelHandle, "inputBuffer", inputBuffer);
-        NeuralNetworkCompute.SetBuffer(kernelHandle, "weightBuffer", weightBuffer);
-        NeuralNetworkCompute.SetBuffer(kernelHandle, "biasBuffer", biasBuffer);
-        NeuralNetworkCompute.SetBuffer(kernelHandle, "outputBuffer", outputBuffer);
-        NeuralNetworkCompute.SetInt("inputSize", inputSize);
-        NeuralNetworkCompute.SetInt("outputSize", outputSize);
-
-        // Execute the compute shader
-        NeuralNetworkCompute.Dispatch(kernelHandle, outputSize, 1, 1);
+        // Create and schedule the job
+        TrainGPUJob job = new(){
+            input = inputNative,
+            weights = weightsNative,
+            biases = biasesNative,
+            output = outputNative
+        };
+        job.Schedule().Complete();
 
         // Retrieve the results
-        float[] output = new float[outputSize];
-        outputBuffer.GetData(output);
+        float[] output = outputNative.ToArray();
 
-        // Clean up
-        inputBuffer.Release();
-        weightBuffer.Release();
-        biasBuffer.Release();
-        outputBuffer.Release();
+        // Dispose NativeArrays
+        inputNative.Dispose();
+        weightsNative.Dispose();
+        biasesNative.Dispose();
+        outputNative.Dispose();
 
         return output;
     }
 
-    private float[] FlattenWeights() {
-        List<float> flatWeights = new List<float>();
+    private NativeArray<float> FlattenWeights() {
+        int totalWeightCount = CalculateTotalWeightCount();
+        NativeArray<float> flatWeights = new(totalWeightCount, Allocator.Temp);
+
+        int currentIndex = 0;
         foreach (var layerWeights in Weights) {
             foreach (var neuronWeights in layerWeights) {
-                flatWeights.AddRange(neuronWeights);
-            }
-        }
-        return flatWeights.ToArray();
-    }
-
-    public float[] Train(float[] input) {
-        for (int epoch = 0; epoch < Epochs; epoch++) {
-            float[] output = FeedForward(input);
-            Backpropagate(input);
-        }
-        return FeedForward(input);
-    }
-
-    private float[] FeedForward(float[] input) {
-        float[] currentActivation = input;
-
-        for (int layerIndex = 0; layerIndex < Layers.Count - 1; layerIndex++) {
-            int nextLayerSize = Layers[layerIndex + 1].NeuronCount;
-            float[] nextActivation = new float[nextLayerSize];
-
-            for (int nextNeuronIndex = 0; nextNeuronIndex < nextLayerSize; nextNeuronIndex++) {
-                float weightedSum = 0;
-
-                for (int currentNeuronIndex = 0; currentNeuronIndex < currentActivation.Length; currentNeuronIndex++) {
-                    Neuron currentNeuron = Layers[layerIndex].Neurons[currentNeuronIndex];
-                    Synapse synapse = currentNeuron.OutgoingSynapses[nextNeuronIndex];
-                    weightedSum += currentNeuron.Activate(currentActivation[currentNeuronIndex]) * synapse.Weight;
+                for (int i = 0; i < neuronWeights.Length; i++) {
+                    flatWeights[currentIndex++] = neuronWeights[i];
                 }
-
-                weightedSum += Biases[layerIndex][nextNeuronIndex];
-                nextActivation[nextNeuronIndex] = Activate(weightedSum, ActivationFunctionType);
-            }
-
-            currentActivation = nextActivation;
-        }
-
-        return currentActivation;
-    }
-
-    private void Backpropagate(float[] input) {
-        float[][] delta = new float[Layers.Count][];
-
-        // Inicializando o delta para todas as camadas
-        for (int i = 0; i < Layers.Count; i++) {
-            delta[i] = new float[Layers[i].NeuronCount];
-        }
-
-        // Calculando o erro da camada de saída
-        for (int i = 0; i < Layers[Layers.Count - 1].NeuronCount; i++) {
-            float error = 0; // Removendo a referência ao 'output'
-            delta[Layers.Count - 1][i] = error * Derivative(Layers[Layers.Count - 1].Neurons[i].Activate(0)); // Usando a ativação da última camada diretamente
-        }
-
-        // Propagando o erro de volta pelas camadas ocultas
-        for (int layerIndex = Layers.Count - 2; layerIndex >= 0; layerIndex--) {
-            for (int i = 0; i < Layers[layerIndex].NeuronCount; i++) {
-                float error = 0;
-                for (int j = 0; j < Layers[layerIndex + 1].NeuronCount; j++) {
-                    error += delta[layerIndex + 1][j] * Layers[layerIndex].Neurons[i].OutgoingSynapses[j].Weight;
-                }
-                delta[layerIndex][i] = error * Derivative(Layers[layerIndex].Neurons[i].Activate(0));
             }
         }
 
-        // Atualizando os pesos e os vieses
-        for (int layerIndex = 0; layerIndex < Layers.Count - 1; layerIndex++) {
-            for (int i = 0; i < Layers[layerIndex + 1].NeuronCount; i++) {
-                for (int j = 0; j < Layers[layerIndex].NeuronCount; j++) {
-                    Synapse synapse = Layers[layerIndex].Neurons[j].OutgoingSynapses[i];
-                    float weightChange = -LearningRate * delta[layerIndex + 1][i] * Layers[layerIndex].Neurons[j].Activate(0);
-                    synapse.Weight += weightChange;
-                }
-                Biases[layerIndex][i] += -LearningRate * delta[layerIndex + 1][i];
+        return flatWeights;
+    }
+
+    private int CalculateTotalWeightCount() {
+        int totalWeightCount = 0;
+        foreach (var layerWeights in Weights) {
+            foreach (var neuronWeights in layerWeights) {
+                totalWeightCount += neuronWeights.Length;
             }
         }
+        return totalWeightCount;
     }
 
-
-    private float Activate(float value, ActivationFunctionType activationFunction) {
-        return activationFunction switch {
-            ActivationFunctionType.Sigmoid => Sigmoid(value),
-            ActivationFunctionType.ReLU => ReLU(value),
-            ActivationFunctionType.Tanh => Tanh(value),
-            _ => throw new ArgumentOutOfRangeException(),
-        };
-    }
-
-    private float Derivative(float value) {
-        return ActivationFunctionType switch {
-            ActivationFunctionType.Sigmoid => value * (1 - value),
-            ActivationFunctionType.ReLU => value > 0 ? 1 : 0,
-            ActivationFunctionType.Tanh => 1 - value * value,
-            _ => throw new ArgumentOutOfRangeException(),
-        };
-    }
-
-    private float Sigmoid(float x) {
-        return 1f / (1f + Mathf.Exp(-x));
-    }
-
-    private float ReLU(float x) {
-        return Mathf.Max(0, x);
-    }
-
-    private float Tanh(float x) {
-        return (Mathf.Exp(x) - Mathf.Exp(-x)) / (Mathf.Exp(x) + Mathf.Exp(-x));
-    }
 
     public NeuralNetwork Crossover(NeuralNetwork otherNetwork) {
         List<NeuralLayer> childLayers = new();
 
         for (int i = 0; i < Layers.Count; i++) {
-            NeuralLayer childLayer;
-            if (i % 2 == 0) {
-                childLayer = Layers[i].Crossover(otherNetwork.Layers[i]);
-            } else {
-                childLayer = otherNetwork.Layers[i].Crossover(Layers[i]);
-            }
+            // Seleciona a camada de uma das redes parentais alternadamente
+            NeuralLayer childLayer = (i % 2 == 0) ? Layers[i].Crossover(otherNetwork.Layers[i]) : otherNetwork.Layers[i].Crossover(Layers[i]);
             childLayers.Add(childLayer);
         }
 
+        // Cria uma nova rede neural com as camadas combinadas
         NeuralNetwork childNetwork = new(
             childLayers,
             ActivationFunctionType,
@@ -293,7 +200,7 @@ public class NeuralNetwork {
 
     public void Mutate(float mutationRate) {
         if (UnityEngine.Random.Range(0f, 1f) < mutationRate) {
-            int chooseMutation = UnityEngine.Random.Range(0, 6);
+            int chooseMutation = UnityEngine.Random.Range(0, 5);
             ApplyMutation(chooseMutation);
         }
     }
@@ -313,37 +220,45 @@ public class NeuralNetwork {
                 EvolveToAddNeuron();
                 break;
             case 4:
-                ChangeActivationFunction();
-                break;
-            case 5:
                 RemoveDisconnectedElements();
                 break;
         }
     }
 
     private void AddConnection() {
-        int layerIndex = UnityEngine.Random.Range(0, Layers.Count - 1);
-        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
-        int targetNeuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex + 1].Neurons.Count);
+        int layerIndex = rand.NextInt(0, Layers.Count - 1);
+        int targetLayerIndex = layerIndex + 1;
 
-        float weight = UnityEngine.Random.Range(-1f, 1f);
-        Layers[layerIndex].Neurons[neuronIndex].AddOutgoingSynapse(Layers[layerIndex + 1].Neurons[targetNeuronIndex], weight);
+        if (Layers[layerIndex].Neurons.Count > 0 && Layers[targetLayerIndex].Neurons.Count > 0) {
+            int neuronIndex = rand.NextInt(0, Layers[layerIndex].Neurons.Count);
+            int targetNeuronIndex = rand.NextInt(0, Layers[targetLayerIndex].Neurons.Count);
+
+            float weight = rand.NextFloat(-1f, 1f);
+            Layers[layerIndex].Neurons[neuronIndex].AddOutgoingSynapse(Layers[targetLayerIndex].Neurons[targetNeuronIndex], weight);
+        }
     }
+
+    private void MutateConnection(Neuron neuron, float mutationAmount) {
+        if (neuron.OutgoingSynapses.Count > 0) {
+            int synapseIndex = rand.NextInt(0, neuron.OutgoingSynapses.Count);
+            Synapse synapse = neuron.OutgoingSynapses[synapseIndex];
+            synapse.Weight += rand.NextFloat(-mutationAmount, mutationAmount);
+            neuron.OutgoingSynapses[synapseIndex] = synapse;
+        }
+    }
+
 
     private void ChangeConnectionWeight() {
         int layerIndex = UnityEngine.Random.Range(0, Layers.Count - 1);
         int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
-        int synapseIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses.Count);
-
-        Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses[synapseIndex].Weight += UnityEngine.Random.Range(-0.5f, 0.5f);
+        MutateConnection(Layers[layerIndex].Neurons[neuronIndex], 0.5f);
     }
 
     private void DisableConnection() {
         int layerIndex = UnityEngine.Random.Range(0, Layers.Count - 1);
         int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
-        int synapseIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses.Count);
-
-        Layers[layerIndex].Neurons[neuronIndex].OutgoingSynapses[synapseIndex].Weight = 0f;
+        Neuron neuron = Layers[layerIndex].Neurons[neuronIndex];
+        MutateConnection(neuron, Mathf.Infinity);
     }
 
     private void EvolveToAddNeuron() {
@@ -359,17 +274,10 @@ public class NeuralNetwork {
         Layers[layerIndex].AddNeuron(newNeuron);
     }
 
-    private void ChangeActivationFunction() {
-        int layerIndex = UnityEngine.Random.Range(1, Layers.Count - 1);
-        int neuronIndex = UnityEngine.Random.Range(0, Layers[layerIndex].Neurons.Count);
-
-        ActivationFunctionType newActivationFunction = (ActivationFunctionType)UnityEngine.Random.Range(0, Enum.GetValues(typeof(ActivationFunctionType)).Length);
-        Layers[layerIndex].Neurons[neuronIndex].ActivationFunction = newActivationFunction;
-    }
-
     private void RemoveDisconnectedElements() {
         for (int layerIndex = 1; layerIndex < Layers.Count; layerIndex++) {
-            List<Neuron> connectedNeurons = new();
+            int connectedNeuronsCount = 0;
+            List<Neuron> neuronsToRemove = new();
 
             foreach (Neuron neuron in Layers[layerIndex].Neurons) {
                 bool isConnected = false;
@@ -379,17 +287,18 @@ public class NeuralNetwork {
                         break;
                     }
                 }
-                if (isConnected) {
-                    connectedNeurons.Add(neuron);
+
+                if (!isConnected) {
+                    neuronsToRemove.Add(neuron);
+                } else {
+                    connectedNeuronsCount++;
                 }
             }
 
-            Layers[layerIndex].Neurons = connectedNeurons;
+            foreach (Neuron neuronToRemove in neuronsToRemove) {
+                Layers[layerIndex].Neurons.Remove(neuronToRemove);
+            }
         }
-    }
-
-    public void AddLayer(NeuralLayer layer) {
-        Layers.Add(layer);
     }
 
     public static NeuralNetwork FromJson(string json) {
