@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel;
 using UnityEngine;
 
 public class CarController : MonoBehaviour {
@@ -13,26 +14,14 @@ public class CarController : MonoBehaviour {
     public float maxBrakeForce = 2f;
     public int MaxTargets = 5;
 
+    public bool IsElite { get; set; }
+
     private Rigidbody2D rb;
     private List<Vector3> targetSequence;
     private int currentTargetIndex = 0;
-    private readonly float[] rayDistances = new float[8];
-    private readonly float rayLength = 5f;
-    private readonly float longerRayLength = 10f;
-
-    private readonly Vector2[] directions = {
-        Vector2.up,
-        (Vector2.up + Vector2.right).normalized,
-        Vector2.right,
-        (Vector2.down + Vector2.right).normalized,
-        Vector2.down,
-        (Vector2.down + Vector2.left).normalized,
-        Vector2.left,
-        (Vector2.up + Vector2.left).normalized
-    };
 
     private void Start() {
-        rb = GetComponent<Rigidbody2D>();
+        if (rb == null) rb = GetComponent<Rigidbody2D>();
         rb.mass = mass / 1000;
         rb.drag = dragCoefficient;
         rb.angularDrag = 0.5f;
@@ -53,44 +42,25 @@ public class CarController : MonoBehaviour {
         float distanceToTarget = Vector2.Distance(transform.position, targetPosition);
         float angleToTarget = Vector2.SignedAngle(transform.up, targetPosition - (Vector2)transform.position);
 
-        UpdateRaycastDistances();
-
         float[] inputs = {
-            transform.position.x,
-            transform.position.y,
             transform.eulerAngles.z,
             rb.velocity.magnitude,
             distanceToTarget,
             angleToTarget
         };
 
-        inputs = CombineInputs(inputs, rayDistances);
-
         if (Brain != null && Brain.NeuralNetwork != null) {
-            float[] outputs = Brain.NeuralNetwork.TrainGPU(inputs);
+            float[] outputs = Brain.NeuralNetwork.FeedForward(inputs);
             ApplyOutputs(outputs);
         }
-    }
 
-    private void UpdateRaycastDistances() {
-        for (int i = 0; i < directions.Length; i++) {
-            float length = (i % 2 == 0) ? longerRayLength : rayLength;
-            RaycastHit2D hit = Physics2D.Raycast(transform.position, directions[i], length);
-            rayDistances[i] = hit.collider ? hit.distance : length;
-        }
-    }
-
-    private float[] CombineInputs(float[] baseInputs, float[] additionalInputs) {
-        float[] combined = new float[baseInputs.Length + additionalInputs.Length];
-        baseInputs.CopyTo(combined, 0);
-        additionalInputs.CopyTo(combined, baseInputs.Length);
-        return combined;
     }
 
     private void ApplyOutputs(float[] outputs) {
-        float acceleration = outputs[0];
-        float brake = outputs[1];
-        float steering = outputs[2];
+
+        float acceleration = Mathf.Clamp(outputs[0], 0f, 1f);
+        float brake = Mathf.Clamp(outputs[1], 0f, 1f);
+        float steering = Mathf.Clamp(outputs[2] * 2f - 1f, -1f, 1f);
 
         Vector2 forward = transform.up;
 
@@ -111,14 +81,15 @@ public class CarController : MonoBehaviour {
         }
     }
 
+
     private void OnTriggerEnter2D(Collider2D other) {
         if (other.CompareTag("Target")) {
             if (currentTargetIndex < targetSequence.Count && other.transform.position == targetSequence[currentTargetIndex]) {
                 currentTargetIndex = (currentTargetIndex + 1) % MaxTargets;
                 float timeToTarget = Time.time;
 
-                float reward = 100f / (timeToTarget + 1f);
-                Brain.Fitness += Mathf.Clamp(reward, 0.1f, 10f);
+                float timeReward = 100f / (timeToTarget + 1f);
+                Brain.Fitness += 10 + timeReward;
             }
         }
     }

@@ -1,116 +1,140 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class BrainDrawer : MonoBehaviour {
-    private DNA bestGenes;
-    [SerializeField] private GameObject neuronPrefab;
-    [SerializeField] private Color neuronColor;
-    [SerializeField] private GameObject connectionPrefab;
-    [SerializeField] private Color connectionColor;
-    [SerializeField] private RectTransform panelRect;
+    public GameObject neuronPrefab;
+    public GameObject synapsePrefab;
+    public RectTransform drawingArea;
+    public float layerSpacing = 15f;
+    public float neuronSpacing = 10f;
+    public Gradient neuronColorGradient; // Gradiente de cores para neurônios
+    public Gradient synapseColorGradient; // Gradiente de cores para sinapses
+    private readonly List<GameObject> neurons = new();
+    private readonly List<GameObject> synapses = new();
 
-    private readonly List<GameObject> neuronObjects = new();
-    private readonly List<GameObject> connectionObjects = new();
+    public void UpdateBrain(NeuralNetwork network) {
+        
+        return;/*
+        
+        ClearExistingBrain();
 
-    public void UpdateBrain(DNA dna) {
-        bestGenes = dna;
-        DrawBrain();
-    }
-
-    private void DrawBrain() {
-        ClearNeuronsAndConnections();
-
-        if (bestGenes == null || bestGenes.NeuralNetwork == null) {
-            Debug.LogWarning("No DNA or neural network defined to draw.");
+        if (network == null || (network.HiddenLayer == null || network.HiddenLayer.Length == 0)) {
+            if (network == null) {
+                Debug.LogWarning("Network is null. Aborting UpdateBrain.");
+            }
+            DrawSynapsesDirectly(network?.InputLayer.Length ?? 0, network?.OutputLayer.Length ?? 0);
             return;
         }
 
-        DrawConnections();
-        DrawNeurons();
-    }
+        int inputNeuronCount = network.InputLayer.Length;
+        int hiddenNeuronCount = network.HiddenLayer.Length;
+        int outputNeuronCount = network.OutputLayer.Length;
 
-    private void ClearNeuronsAndConnections() {
-        foreach (var neuronObject in neuronObjects) {
-            Destroy(neuronObject);
-        }
-        neuronObjects.Clear();
+        float startX = -(inputNeuronCount - 1) * layerSpacing / 2;
+        float startY = 0; // Inicializa a posição Y com 0
 
-        foreach (var connectionObject in connectionObjects) {
-            Destroy(connectionObject);
-        }
-        connectionObjects.Clear();
-    }
+        for (int i = 0; i < hiddenNeuronCount; i++) {
+            Vector3 neuronPosition = new Vector3(startX, startY + i * neuronSpacing, 0); // Posição do neurônio
 
-    private void DrawNeurons() {
-        for (int layerIndex = 0; layerIndex < bestGenes.NeuralNetwork.Layers.Count; layerIndex++) {
-            int neuronCount = bestGenes.NeuralNetwork.Layers[layerIndex].Neurons.Count;
+            GameObject neuronObject = Instantiate(neuronPrefab, drawingArea); // Instancia o objeto filho do drawingArea
+            neuronObject.transform.localPosition = neuronPosition; // Define a posição local do objeto filho
+            neurons.Add(neuronObject);
 
-            float yOffset = panelRect.rect.height / (neuronCount + 1);
+            Color neuronColor = neuronColorGradient.Evaluate(CalculateBiasColorValue(network.HiddenLayer[i].Bias));
+            neuronObject.GetComponent<Renderer>().material.color = neuronColor;
 
-            for (int neuronIndex = 0; neuronIndex < neuronCount; neuronIndex++) {
-                float xPos = (layerIndex + 0.5f) * (panelRect.rect.width / (bestGenes.NeuralNetwork.Layers.Count + 1));
-                float yPos = (neuronIndex + 1) * yOffset;
+            foreach (var synapse in network.Synapses) {
+                if (synapse.InputNeuronIndex == i + inputNeuronCount) {
+                    int targetNeuronIndex = synapse.OutputNeuronIndex - inputNeuronCount - hiddenNeuronCount;
+                    if (targetNeuronIndex >= 0 && targetNeuronIndex < outputNeuronCount) {
+                        Vector3 targetPosition = new Vector3(layerSpacing, targetNeuronIndex * neuronSpacing, 0); // Posição do alvo
 
-                GameObject neuron = Instantiate(neuronPrefab, panelRect);
-                neuronObjects.Add(neuron);
+                        GameObject synapseObject = Instantiate(synapsePrefab, drawingArea); // Instancia o objeto filho do drawingArea
+                        synapseObject.transform.localPosition = neuronPosition; // Define a posição local do objeto filho
+                        LineRenderer lineRenderer = synapseObject.GetComponent<LineRenderer>();
+                        lineRenderer.SetPositions(new Vector3[] { Vector3.zero, targetPosition }); // Define a posição relativa do LineRenderer
+                        synapses.Add(synapseObject);
 
-                RectTransform rt = neuron.GetComponent<RectTransform>();
-                rt.sizeDelta = new Vector2(20f, 20f);
-                rt.anchorMin = new Vector2(0, 0);
-                rt.anchorMax = new Vector2(0, 0);
-                rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = new Vector2(xPos, yPos);
-
-                float activation = 0;
-                Color neuronColor = GetNeuronColor(activation);
-                neuron.GetComponent<RawImage>().color = neuronColor;
-                //AddNeuronText(neuron, activation);
-            }
-        }
-    }
-
-    private Color GetNeuronColor(float activation) {
-        if (activation > 0.5f) {
-            return Color.green; // Activated
-        } else if (activation < -0.5f) {
-            return Color.red; // Deactivated
-        } else {
-            return Color.gray; // Neutral
-        }
-    }
-
-    private void DrawConnections() {
-        for (int i = 1; i < bestGenes.NeuralNetwork.Layers.Count; i++) {
-            int previousLayerNeuronCount = bestGenes.NeuralNetwork.Layers[i - 1].NeuronCount;
-            int currentLayerNeuronCount = bestGenes.NeuralNetwork.Layers[i].NeuronCount;
-
-            float xOffset = panelRect.rect.width / (bestGenes.NeuralNetwork.Layers.Count + 1);
-
-            for (int previousNeuronIndex = 0; previousNeuronIndex < previousLayerNeuronCount; previousNeuronIndex++) {
-                float xPos1 = (i - 1 + 0.5f) * xOffset;
-                float yPos1 = ((previousNeuronIndex + 1) * (panelRect.rect.height / (previousLayerNeuronCount + 1)));
-
-                for (int currentNeuronIndex = 0; currentNeuronIndex < currentLayerNeuronCount; currentNeuronIndex++) {
-                    float xPos2 = (i + 0.5f) * xOffset;
-                    float yPos2 = ((currentNeuronIndex + 1) * (panelRect.rect.height / (currentLayerNeuronCount + 1)));
-
-                    foreach (var synapse in bestGenes.NeuralNetwork.Layers[i].Neurons[currentNeuronIndex].IncomingSynapses) {
-                        if (synapse.InputNeuron.Index == bestGenes.NeuralNetwork.Layers[i - 1].Neurons[previousNeuronIndex].Index) {
-                            GameObject connection = Instantiate(connectionPrefab, panelRect);
-                            connectionObjects.Add(connection);
-
-                            RectTransform rt = connection.GetComponent<RectTransform>();
-                            rt.sizeDelta = new Vector2(Vector2.Distance(new Vector2(xPos1, yPos1), new Vector2(xPos2, yPos2)), 2f);
-                            rt.anchorMin = new Vector2(0, 0);
-                            rt.anchorMax = new Vector2(0, 0);
-                            rt.pivot = new Vector2(0, 0.5f);
-                            rt.anchoredPosition = new Vector2(xPos1, yPos1);
-                            rt.localRotation = Quaternion.Euler(0f, 0f, Mathf.Rad2Deg * Mathf.Atan2(yPos2 - yPos1, xPos2 - xPos1));
-                        }
+                        Color synapseColor = synapseColorGradient.Evaluate(CalculateWeightColorValue(synapse.Weight));
+                        lineRenderer.material.color = synapseColor;
                     }
                 }
             }
         }
     }
+
+    private float CalculateBiasColorValue(float bias) {
+        // Normaliza o valor do bias para estar dentro do intervalo [0, 1]
+        return Mathf.Clamp01((bias + 1f) / 2f);
+    }
+
+    private float CalculateWeightColorValue(float weight) {
+        // Normaliza o valor do peso para estar dentro do intervalo [0, 1]
+        return Mathf.Clamp01(weight);
+    }
+
+    private void ClearExistingBrain() {
+        foreach (var neuron in neurons) {
+            Destroy(neuron);
+        }
+        neurons.Clear();
+
+        foreach (var synapse in synapses) {
+            Destroy(synapse);
+        }
+        synapses.Clear();
+    }
+
+    private void DrawSynapsesDirectly(int inputLayerSize, int outputLayerSize) {
+        // Calcular a posição inicial Y para os neurônios de entrada e saída
+        float startYInput = -(inputLayerSize - 1) * neuronSpacing / 2;
+        float startYOutput = -(outputLayerSize - 1) * neuronSpacing / 2;
+
+        // Obter o tamanho do RectTransform da área de desenho
+        Vector2 drawingAreaSize = drawingArea.rect.size;
+
+        // Obter o tamanho do primeiro neurônio na camada de entrada
+        GameObject sampleNeuron = Instantiate(neuronPrefab);
+        RectTransform sampleNeuronRectTransform = sampleNeuron.GetComponent<RectTransform>();
+        float neuronWidth = sampleNeuronRectTransform.rect.width;
+        float neuronHeight = sampleNeuronRectTransform.rect.height;
+
+        // Calcular o tamanho total ocupado pelos neurônios de entrada e saída
+        float totalInputWidth = neuronWidth;
+        float totalOutputWidth = neuronWidth + layerSpacing;
+        float totalWidth = totalInputWidth + totalOutputWidth;
+
+        // Calcular o espaçamento horizontal com base no tamanho total
+        float horizontalSpacing = (drawingAreaSize.x - totalWidth) / (outputLayerSize + 1);
+
+        // Desenhar sinapses das entradas para as saídas
+        for (int i = 0; i < inputLayerSize; i++) {
+            Vector3 inputNeuronPosition = new Vector3(horizontalSpacing + totalInputWidth / 2, startYInput + i * neuronHeight, 0);
+            GameObject inputNeuronObject = Instantiate(neuronPrefab, drawingArea);
+            inputNeuronObject.transform.localPosition = inputNeuronPosition + new Vector3(-drawingAreaSize.x / 2, -drawingAreaSize.y / 2, 0);
+            neurons.Add(inputNeuronObject);
+
+            for (int j = 0; j < outputLayerSize; j++) {
+                Vector3 outputNeuronPosition = new Vector3(horizontalSpacing + totalInputWidth + layerSpacing + (j * (horizontalSpacing + neuronWidth)) + neuronWidth / 2, startYOutput + i * neuronHeight, 0);
+                GameObject outputNeuronObject = Instantiate(neuronPrefab, drawingArea);
+                outputNeuronObject.transform.localPosition = outputNeuronPosition + new Vector3(-drawingAreaSize.x / 2, -drawingAreaSize.y / 2, 0);
+                neurons.Add(outputNeuronObject);
+
+                Vector3 synapseStartPosition = inputNeuronObject.transform.position;
+                Vector3 synapseEndPosition = outputNeuronObject.transform.position;
+
+                GameObject synapseObject = Instantiate(synapsePrefab, drawingArea);
+                LineRenderer lineRenderer = synapseObject.GetComponent<LineRenderer>();
+                lineRenderer.SetPositions(new Vector3[] { synapseStartPosition, synapseEndPosition });
+                synapses.Add(synapseObject);
+
+                Color synapseColor = synapseColorGradient.Evaluate(0.5f); // Define uma cor intermediária para as sinapses
+                lineRenderer.material.color = synapseColor;
+            }
+        }
+
+        // Destruir o neurônio de exemplo usado para obter o tamanho
+        Destroy(sampleNeuron);*/
+    }
+
 }

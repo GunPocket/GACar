@@ -324,7 +324,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1052228790}
   - component: {fileID: 1052228791}
-  - component: {fileID: 1052228792}
   m_Layer: 0
   m_Name: Population Manager
   m_TagString: Manager
@@ -359,40 +358,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1970cefb7fca34f48a287ec57dad5489, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  TimeScale: 1
+  TimeScale: 10
   carPrefab: {fileID: 1075620252010625400, guid: 96a3dcd0359d50648ba590dca18a03e2, type: 3}
   targetPrefab: {fileID: 3182343489933841686, guid: a2ce4ba2dcbc36c448dbcc91b0e306bc, type: 3}
   populationSize: 100
-  mutationRate: 0.05
+  mutationRate: 0.1
   targetSpawnRadius: 20
   maxTargets: 5
   simulationTime: 30
-  predefinedDNAString: 
-  inputLayerSize: 14
+  inputLayerSize: 4
+  hiddenLayerSize: 0
   outputLayerSize: 3
   activationFunctionType: 1
-  regularizationType: 2
-  optimizationAlgorithm: 0
   GenerationText: {fileID: 1858847888}
   ElapsedTime: {fileID: 1273294663}
   BestFitness: {fileID: 1450042757}
   BrainDrawer: {fileID: 1774182868}
-  NeuralNetworkCompute: {fileID: 7200000, guid: f58c4340cd4243f438251dbb88deb425, type: 3}
---- !u!114 &1052228792
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1052228789}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 87d8e513f072c9b4f8926310d4c49584, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  populationManager: {fileID: 1052228791}
-  bestGenesHistory: []
-  currentGenerationIndex: 0
 --- !u!1 &1217302211
 GameObject:
   m_ObjectHideFlags: 0
@@ -1196,7 +1177,7 @@ GameObject:
   - component: {fileID: 1774182866}
   - component: {fileID: 1774182868}
   m_Layer: 5
-  m_Name: Panel
+  m_Name: BrainPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1272,10 +1253,70 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   neuronPrefab: {fileID: 2425688574845200121, guid: 275706897d5b356478e38c62eecc3a40, type: 3}
-  neuronColor: {r: 1, g: 1, b: 1, a: 1}
-  connectionPrefab: {fileID: 4884607480494722352, guid: c95b4c41980220949a1e22c52639a5d5, type: 3}
-  connectionColor: {r: 0, g: 1, b: 0.06818819, a: 1}
-  panelRect: {fileID: 1774182865}
+  synapsePrefab: {fileID: 4884607480494722352, guid: c95b4c41980220949a1e22c52639a5d5, type: 3}
+  drawingArea: {fileID: 1774182865}
+  layerSpacing: 1.5
+  neuronSpacing: 1
+  neuronColorGradient:
+    serializedVersion: 2
+    key0: {r: 0.49056602, g: 0.0047542565, b: 0, a: 1}
+    key1: {r: 0.1745283, g: 1, b: 0.41487902, a: 1}
+    key2: {r: 0, g: 0, b: 0, a: 0}
+    key3: {r: 0, g: 0, b: 0, a: 0}
+    key4: {r: 0, g: 0, b: 0, a: 0}
+    key5: {r: 0, g: 0, b: 0, a: 0}
+    key6: {r: 0, g: 0, b: 0, a: 0}
+    key7: {r: 0, g: 0, b: 0, a: 0}
+    ctime0: 0
+    ctime1: 65535
+    ctime2: 0
+    ctime3: 0
+    ctime4: 0
+    ctime5: 0
+    ctime6: 0
+    ctime7: 0
+    atime0: 0
+    atime1: 65535
+    atime2: 0
+    atime3: 0
+    atime4: 0
+    atime5: 0
+    atime6: 0
+    atime7: 0
+    m_Mode: 0
+    m_ColorSpace: -1
+    m_NumColorKeys: 2
+    m_NumAlphaKeys: 2
+  synapseColorGradient:
+    serializedVersion: 2
+    key0: {r: 1, g: 0, b: 0, a: 1}
+    key1: {r: 0.72569436, g: 0.7216981, b: 1, a: 1}
+    key2: {r: 0, g: 0, b: 0, a: 0}
+    key3: {r: 0, g: 0, b: 0, a: 0}
+    key4: {r: 0, g: 0, b: 0, a: 0}
+    key5: {r: 0, g: 0, b: 0, a: 0}
+    key6: {r: 0, g: 0, b: 0, a: 0}
+    key7: {r: 0, g: 0, b: 0, a: 0}
+    ctime0: 0
+    ctime1: 65535
+    ctime2: 0
+    ctime3: 0
+    ctime4: 0
+    ctime5: 0
+    ctime6: 0
+    ctime7: 0
+    atime0: 0
+    atime1: 65535
+    atime2: 0
+    atime3: 0
+    atime4: 0
+    atime5: 0
+    atime6: 0
+    atime7: 0
+    m_Mode: 0
+    m_ColorSpace: -1
+    m_NumColorKeys: 2
+    m_NumAlphaKeys: 2
 --- !u!1 &1858847886
 GameObject:
   m_ObjectHideFlags: 0
@@ -1492,7 +1533,7 @@ GameObject:
   - component: {fileID: 1884990726}
   - component: {fileID: 1884990725}
   m_Layer: 5
-  m_Name: Panel
+  m_Name: SimulationInfo
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
